@@ -1,0 +1,27 @@
+{
+  "package": "AMC-EOS independent AI review package",
+  "sourceArchive": "amc-eos-v10.33-manager-accountability-runtime.zip",
+  "reviewEntryPoint": "AI_REVIEW_HANDOFF.md",
+  "importantPaths": [
+    "apps/api/src/production-referrals",
+    "apps/api/src/production-admissions",
+    "apps/api/src/daily-service-delivery",
+    "apps/api/src/manager-operations",
+    "apps/api/src/auth",
+    "apps/api/prisma/schema.prisma",
+    "apps/api/test/integration/core-pilot",
+    "apps/api/test/integration/manager-operations",
+    "apps/e2e/tests",
+    ".github/workflows/dependency-backed-api-build.yml"
+  ],
+  "runtimeVerificationRequired": true,
+  "recommendedPriority": [
+    "dependency install",
+    "TypeScript semantic compile",
+    "Prisma generate/validate/migrate",
+    "core pilot PostgreSQL integration",
+    "manager operations PostgreSQL integration",
+    "authentication tests",
+    "Playwright golden path"
+  ]
+}
