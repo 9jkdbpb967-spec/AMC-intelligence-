@@ -1,0 +1,105 @@
+name: AMC-EOS First Green
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: 10.15.0
+  DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  REFERRAL_INTEGRATION_DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  CORE_PILOT_DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  WORKFORCE_INTEGRATION_DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  FINANCE_INTEGRATION_DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  ANALYTICS_INTEGRATION_DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  MANAGER_OPERATIONS_DATABASE_URL: postgresql://amc:amc@127.0.0.1:5432/amc_first_green?schema=public
+  NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+  E2E_BASE_URL: http://127.0.0.1:3000
+  NODE_ENV: test
+  JWT_SECRET: first-green-jwt-secret-at-least-32-characters
+  REFRESH_TOKEN_SECRET: first-green-refresh-secret-at-least-32-characters
+  PASSWORD_RESET_SECRET: first-green-reset-secret-at-least-32-characters
+
+jobs:
+  first-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: amc
+          POSTGRES_PASSWORD: amc
+          POSTGRES_DB: amc_first_green
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amc -d amc_first_green"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install exact pnpm executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/pnpm-exe" "@pnpm/exe@${PNPM_VERSION}"
+          PNPM_BIN="$RUNNER_TEMP/pnpm-exe/node_modules/.bin/pnpm"
+          test -x "$PNPM_BIN"
+          test "$("$PNPM_BIN" --version)" = "$PNPM_VERSION"
+          echo "PNPM_BIN=$PNPM_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PNPM_BIN")" >> "$GITHUB_PATH"
+
+      - name: Verify package-manager contract
+        run: test "$(node -p "require('./package.json').packageManager")" = "pnpm@${PNPM_VERSION}"
+
+      - name: Run Phase 1 runtime proof
+        run: python3 scripts/runtime/run_phase1_runtime_proof.py --pnpm "$PNPM_BIN"
+
+      - name: Install Playwright Chromium
+        run: $PNPM_BIN exec playwright install --with-deps chromium
+
+      - name: Run release candidate with E2E
+        run: $PNPM_BIN release:candidate:e2e
+
+      - name: Run staging migration proof
+        run: $PNPM_BIN migration:staging:proof
+
+      - name: Run consolidation readiness
+        run: $PNPM_BIN consolidation:readiness
+
+      - name: Generate cutover plan
+        run: $PNPM_BIN release:cutover-plan
+
+      - name: Evaluate completion decision
+        run: $PNPM_BIN release:completion-decision
+
+      - name: Upload all current proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amc-eos-first-green-${{ github.run_id }}
+          path: |
+            pnpm-lock.yaml
+            release-evidence/current/
+            release-evidence/phase1-runtime/
+            release-evidence/staging-migration-proof/
+            release-evidence/phase2a/
+            release-evidence/phase2b/
+            release-evidence/phase2c/
+            release-evidence/phase2de/
+          retention-days: 14
+          if-no-files-found: warn
